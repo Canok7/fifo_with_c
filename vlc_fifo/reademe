@@ -1,0 +1,80 @@
+1.0 这是从vlc3.0.6 源码中抽取出来的 缓冲队列模块，测试例子见 main.c
+在ubuntu 64-bit上测试过。 vlc  使用的是多线程机制，这个模块属于典型的应用于多线程情况下生成者消费者问题，
+
+2.0 //缓冲区的管理，主要还是用的 malloc+free, 没有自行添加管理机制，每次申请新的缓冲区或者释放缓冲区，都会调用的c库
+malloc+free, 只是在其中添加了对申请的内存空间进行了直接对齐。所以个人感觉这个设计效率还是有待提升的。
+内存的管理其实这里完全依赖于操作系统自己的 malloc + free。
+
+3.0 核心实现在fifo.c和block.c, Filesystem.c 可以去除掉，Thread.c是vlc为兼容不同系统的线程机制，而对线程资源进行的一层封装。
+  一些基础性的定义，在vlc_common.h 如果是要在32bit系统上使用，需要修改 vlc_common.h 上的 uintptr_t 为32bit
+
+以vlc_fifo_ 开头的，都是需要自行手动调用 vlc_fifo_lock来加锁的
+以block_ 开头的，函数内部自己有加锁和解锁。
+
+//create 
+1.0 block_FifoNew();
+	//销毁，也会把其中的block 全部释放
+   1.1 block_FifoRelease( block_fifo_t *p_fifo )
+   
+
+//使用前加锁
+2.0 vlc_fifo_Lock( p_owner->p_fifo );   vlc_fifo_Unlock( p_owner->p_fifo );
+
+//条件等待
+3.0 vlc_fifo_Wait( p_owner->p_fifo ); 
+    触发条件 ： void vlc_fifo_Signal(vlc_fifo_t *fifo)
+
+
+4.0 //出队列，获取数据
+
+	//需要手动加锁
+   vlc_fifo_DequeueUnlocked(vlc_fifo_t *)//获取队列尾部数据
+   vlc_fifo_DequeueAllUnlocked();//把队列中所有数据块以一个链表的形式放出来，返回这个链表的头
+
+	//不用加锁
+	block_FifoGet(block_fifo_t *fifo)// 获取一个block，一直等到只有一个block，才会返回?????这个注释有些疑问
+    block_FifoEmpty(block_fifo_t *fifo);//把其中数据全部释放
+   		
+
+5.0 //入队列，放数据
+
+	//需要手动加锁，
+    vlc_fifo_QueueUnlocked(vlc_fifo_t *, block_t *)//加入的数据可以是一串block
+
+	//不需要手动加锁
+	void block_FifoPut(block_fifo_t *fifo, block_t *block)//加入的数据可以是一串block
+	
+6.0 //一些状态的获取：
+    //需要自行用 vlc_fifo_lock上锁 和解锁
+	6.1 vlc_fifo_GetCount(const vlc_fifo_t *fifo); //获取block数量  其中i_depth
+	6.2 vlc_fifo_GetBytes(const vlc_fifo_t *fifo);//获取总大小
+
+	//不需要手动加锁的获取状态的接口
+	6.3 size_t block_FifoSize(block_fifo_t *) //获取总大小
+	6.4 size_t block_FifoCount(block_fifo_t *) //获取block数量
+
+
+
+关于block 存储区域的函数：
+
+ 1.0  //申请和释放
+     block_t *block_Alloc(size_t size);// 通用的申请，vlc内部会确保用malloc申请的空间内存对齐
+     block_t *block_Realloc(block_t *, ssize_t pre, size_t body) //重新分配大小
+     
+	 block_Release(block_t *block)//无论用哪一种方式申请的block，都可以用这个来释放，他会自动调用申请时注册的释放方法
+
+     
+    block_t * block_heap_Alloc (void *addr, size_t length);//用这个方式申请的空间，是没有考虑对齐的，
+	block_t *block_mmap_Alloc (void *addr, size_t length);
+	block_t *block_shm_Alloc (void *addr, size_t length);
+	block_t *block_File(int fd, bool write);//这个就有意思了，申请一个block，把文件内容读到block中。
+	block_t *block_FilePath(const char *, bool write);//同上
+	
+2.0 也可以用自己的内存空间创建一个block
+   void block_Init( block_t *restrict b, void *buf, size_t size );
+
+ 3.0 //创建一个block的拷贝 
+    block_t *block_Duplicate( block_t *p_block )
+
+ 4.0 把多个block链成一串
+   void block_ChainAppend( block_t **pp_list, block_t *p_block )
