@@ -25,10 +25,10 @@ mEffectives(0)
 	
 	pthread_mutexattr_t mutextattr;
 	pthread_mutexattr_init(&mutextattr);
-	// ÉèÖÃ»¥³âËøÔÚ½ø³ÌÖ®¼ä¹²Ïí
+	// è®¾ç½®äº’æ–¥é”åœ¨è¿›ç¨‹ä¹‹é—´å…±äº«
 	pthread_mutexattr_setpshared(&mutextattr, PTHREAD_PROCESS_SHARED);
 	int i =0;
-	for(i=0;i++;i<maxFrames)
+	for(i=0;i<maxFrames;i++)
 	{
 		pthread_mutex_init(&que[i].mlock, &mutextattr);
 	}
@@ -107,7 +107,7 @@ int CQueue::push(uint8_t *data,int len)
 	addInindex();
 	sem_post(&mSem);
 	if(IncreaseEffectives() == maxFrames)
-	{//¸²¸ÇÀÏÊı¾İ
+	{//è¦†ç›–è€æ•°æ®
 		DEBUG("cover  mEffectives %d ,maxFrames %d\n",mEffectives,maxFrames);
 		//DEBUG("cover  mInindex %d ,mOutindex %d\n",mInindex,mOutindex);
 		sem_trywait(&mSem);
